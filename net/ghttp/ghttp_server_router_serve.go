@@ -47,6 +47,18 @@ func (s *Server) getHandlersWithCache(r *Request) (parsedItems []*HandlerItemPar
 		path   = r.URL.Path
 		host   = r.GetHost()
 	)
+	// In case of, eg:
+	// Case 1:
+	// 		GET /net/http
+	// 		r.URL.Path    : /net/http
+	// 		r.URL.RawPath : (empty string)
+	// Case 2:
+	// 		GET /net%2Fhttp
+	// 		r.URL.Path    : /net/http
+	// 		r.URL.RawPath : /net%2Fhttp
+	if r.URL.RawPath != "" {
+		path = r.URL.RawPath
+	}
 	// Special http method OPTIONS handling.
 	// It searches the handler with the request method instead of OPTIONS method.
 	if method == http.MethodOptions {
@@ -175,6 +187,8 @@ func (s *Server) searchHandlers(method, path, domain string) (parsedItems []*Han
 					repeatHandlerCheckMap[item.Id] = struct{}{}
 				}
 				// Serving handler can only be added to the handler array just once.
+				// The first route item in the list has the most priority than the rest.
+				// This ignoring can implement route overwritten feature.
 				if hasServe {
 					switch item.Type {
 					case HandlerTypeHandler, HandlerTypeObject:
