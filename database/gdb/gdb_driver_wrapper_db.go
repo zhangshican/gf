@@ -68,6 +68,7 @@ func (d *DriverWrapperDB) TableFields(
 		)
 	}
 	var (
+		// prefix:group@schema#table
 		cacheKey = fmt.Sprintf(
 			`%s%s@%s#%s`,
 			cachePrefixTableFields,
@@ -90,7 +91,7 @@ func (d *DriverWrapperDB) TableFields(
 	return
 }
 
-// DoInsert inserts or updates data forF given table.
+// DoInsert inserts or updates data for given table.
 // This function is usually used for custom interface definition, you do not need call it manually.
 // The parameter `data` can be type of map/gmap/struct/*struct/[]map/[]struct, etc.
 // Eg:

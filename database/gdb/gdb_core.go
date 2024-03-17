@@ -414,7 +414,7 @@ func (c *Core) fieldsToSequence(ctx context.Context, table string, fields []stri
 	return fieldsResultInSequence, nil
 }
 
-// DoInsert inserts or updates data forF given table.
+// DoInsert inserts or updates data for given table.
 // This function is usually used for custom interface definition, you do not need call it manually.
 // The parameter `data` can be type of map/gmap/struct/*struct/[]map/[]struct, etc.
 // Eg:
@@ -487,12 +487,16 @@ func (c *Core) DoInsert(ctx context.Context, link Link, table string, list List,
 		keysStr      = charL + strings.Join(keys, charR+","+charL) + charR
 		operation    = GetInsertOperationByOption(option.InsertOption)
 	)
+	// Upsert clause only takes effect on Save operation.
 	if option.InsertOption == InsertOptionSave {
-		onDuplicateStr = c.formatOnDuplicate(keys, option)
+		onDuplicateStr, err = c.db.FormatUpsert(keys, list, option)
+		if err != nil {
+			return nil, err
+		}
 	}
 	var (
-		listLength  = len(list)
-		valueHolder = make([]string, 0)
+		listLength   = len(list)
+		valueHolders = make([]string, 0)
 	)
 	for i := 0; i < listLength; i++ {
 		values = values[:0]
@@ -506,9 +510,9 @@ func (c *Core) DoInsert(ctx context.Context, link Link, table string, list List,
 				params = append(params, list[i][k])
 			}
 		}
-		valueHolder = append(valueHolder, "("+gstr.Join(values, ",")+")")
+		valueHolders = append(valueHolders, "("+gstr.Join(values, ",")+")")
 		// Batch package checks: It meets the batch number, or it is the last element.
-		if len(valueHolder) == option.BatchCount || (i == listLength-1 && len(valueHolder) > 0) {
+		if len(valueHolders) == option.BatchCount || (i == listLength-1 && len(valueHolders) > 0) {
 			var (
 				stdSqlResult sql.Result
 				affectedRows int64
@@ -516,7 +520,7 @@ func (c *Core) DoInsert(ctx context.Context, link Link, table string, list List,
 			stdSqlResult, err = c.db.DoExec(ctx, link, fmt.Sprintf(
 				"%s INTO %s(%s) VALUES%s %s",
 				operation, c.QuotePrefixTableName(table), keysStr,
-				gstr.Join(valueHolder, ","),
+				gstr.Join(valueHolders, ","),
 				onDuplicateStr,
 			), params...)
 			if err != nil {
@@ -530,53 +534,10 @@ func (c *Core) DoInsert(ctx context.Context, link Link, table string, list List,
 				batchResult.Affected += affectedRows
 			}
 			params = params[:0]
-			valueHolder = valueHolder[:0]
+			valueHolders = valueHolders[:0]
 		}
 	}
 	return batchResult, nil
-}
-
-func (c *Core) formatOnDuplicate(columns []string, option DoInsertOption) string {
-	var onDuplicateStr string
-	if option.OnDuplicateStr != "" {
-		onDuplicateStr = option.OnDuplicateStr
-	} else if len(option.OnDuplicateMap) > 0 {
-		for k, v := range option.OnDuplicateMap {
-			if len(onDuplicateStr) > 0 {
-				onDuplicateStr += ","
-			}
-			switch v.(type) {
-			case Raw, *Raw:
-				onDuplicateStr += fmt.Sprintf(
-					"%s=%s",
-					c.QuoteWord(k),
-					v,
-				)
-			default:
-				onDuplicateStr += fmt.Sprintf(
-					"%s=VALUES(%s)",
-					c.QuoteWord(k),
-					c.QuoteWord(gconv.String(v)),
-				)
-			}
-		}
-	} else {
-		for _, column := range columns {
-			// If it's SAVE operation, do not automatically update the creating time.
-			if c.isSoftCreatedFieldName(column) {
-				continue
-			}
-			if len(onDuplicateStr) > 0 {
-				onDuplicateStr += ","
-			}
-			onDuplicateStr += fmt.Sprintf(
-				"%s=VALUES(%s)",
-				c.QuoteWord(column),
-				c.QuoteWord(column),
-			)
-		}
-	}
-	return InsertOnDuplicateKeyUpdate + " " + onDuplicateStr
 }
 
 // Update does "UPDATE ... " statement for the table.
@@ -762,31 +723,43 @@ func (c *Core) writeSqlToLogger(ctx context.Context, sql *Sql) {
 
 // HasTable determine whether the table name exists in the database.
 func (c *Core) HasTable(name string) (bool, error) {
-	var (
-		ctx      = c.db.GetCtx()
-		cacheKey = fmt.Sprintf(`HasTable: %s`, name)
-	)
-	result, err := c.GetCache().GetOrSetFuncLock(ctx, cacheKey, func(ctx context.Context) (interface{}, error) {
-		tableList, err := c.db.Tables(ctx)
-		if err != nil {
-			return false, err
-		}
-		for _, table := range tableList {
-			if table == name {
-				return true, nil
-			}
-		}
-		return false, nil
-	}, 0,
-	)
+	tables, err := c.GetTablesWithCache()
 	if err != nil {
 		return false, err
 	}
-	return result.Bool(), nil
+	charL, charR := c.db.GetChars()
+	name = gstr.Trim(name, charL+charR)
+	for _, table := range tables {
+		if table == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
-// isSoftCreatedFieldName checks and returns whether given filed name is an automatic-filled created time.
-func (c *Core) isSoftCreatedFieldName(fieldName string) bool {
+// GetTablesWithCache retrieves and returns the table names of current database with cache.
+func (c *Core) GetTablesWithCache() ([]string, error) {
+	var (
+		ctx      = c.db.GetCtx()
+		cacheKey = fmt.Sprintf(`Tables: %s`, c.db.GetGroup())
+	)
+	result, err := c.GetCache().GetOrSetFuncLock(
+		ctx, cacheKey, func(ctx context.Context) (interface{}, error) {
+			tableList, err := c.db.Tables(ctx)
+			if err != nil {
+				return false, err
+			}
+			return tableList, nil
+		}, 0,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return result.Strings(), nil
+}
+
+// IsSoftCreatedFieldName checks and returns whether given field name is an automatic-filled created time.
+func (c *Core) IsSoftCreatedFieldName(fieldName string) bool {
 	if fieldName == "" {
 		return false
 	}
@@ -794,9 +767,9 @@ func (c *Core) isSoftCreatedFieldName(fieldName string) bool {
 		if utils.EqualFoldWithoutChars(fieldName, config.CreatedAt) {
 			return true
 		}
-		return gstr.InArray(append([]string{config.CreatedAt}, createdFiledNames...), fieldName)
+		return gstr.InArray(append([]string{config.CreatedAt}, createdFieldNames...), fieldName)
 	}
-	for _, v := range createdFiledNames {
+	for _, v := range createdFieldNames {
 		if utils.EqualFoldWithoutChars(fieldName, v) {
 			return true
 		}
@@ -812,5 +785,5 @@ func (c *Core) FormatSqlBeforeExecuting(sql string, args []interface{}) (newSql 
 	// sql = gstr.Trim(sql)
 	// sql = gstr.Replace(sql, "\n", " ")
 	// sql, _ = gregex.ReplaceString(`\s{2,}`, ` `, sql)
-	return handleArguments(sql, args)
+	return handleSliceAndStructArgsForSql(sql, args)
 }

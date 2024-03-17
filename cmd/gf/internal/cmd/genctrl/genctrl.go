@@ -38,7 +38,7 @@ gf gen ctrl
 )
 
 const (
-	PatternApiDefinition  = `type\s+(\w+)Req\s+struct\s+{([\s\S]+?)}`
+	PatternApiDefinition  = `type[\s\(]+(\w+)Req\s+struct\s+{([\s\S]+?)}`
 	PatternCtrlDefinition = `func\s+\(.+?\)\s+\w+\(.+?\*(\w+)\.(\w+)Req\)\s+\(.+?\*(\w+)\.(\w+)Res,\s+\w+\s+error\)\s+{`
 )
 
@@ -74,7 +74,7 @@ type (
 		SdkStdVersion bool   `short:"v" name:"sdkStdVersion" brief:"{CGenCtrlBriefSdkStdVersion}" orphan:"true"`
 		SdkNoV1       bool   `short:"n" name:"sdkNoV1"       brief:"{CGenCtrlBriefSdkNoV1}" orphan:"true"`
 		Clear         bool   `short:"c" name:"clear"         brief:"{CGenCtrlBriefClear}" orphan:"true"`
-		Merge         bool   `short:"m" name:"merge"        brief:"{CGenCtrlControllerMerge}" orphan:"true"`
+		Merge         bool   `short:"m" name:"merge"         brief:"{CGenCtrlControllerMerge}" orphan:"true"`
 	}
 	CGenCtrlOutput struct{}
 )
