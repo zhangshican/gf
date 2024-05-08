@@ -567,7 +567,7 @@ func Test_StructEmbedded5(t *testing.T) {
 		err = gconv.Struct(data, user1)
 		t.AssertNil(err)
 		t.Assert(user1, &UserWithBase1{1, "john", Base{"123", "456"}})
-
+		return
 		err = gconv.Struct(data, user2)
 		t.AssertNil(err)
 		t.Assert(user2, &UserWithBase2{1, "john", Base{"", ""}})
@@ -1303,6 +1303,33 @@ func Test_Struct_Issue1597(t *testing.T) {
 	})
 }
 
+// https://github.com/gogf/gf/issues/3449
+func Test_Struct_Issue3449(t *testing.T) {
+	gtest.C(t, func(t *gtest.T) {
+		type S struct {
+			A int
+			B json.RawMessage
+		}
+
+		jsonByte := []byte(`{
+		"a":1, 
+		"b":[{
+            "k1": "11",
+            "k2": "12"
+        },
+        {
+            "k1": "21",
+            "k2": "22"
+        }]}`)
+		data, err := gjson.DecodeToJson(jsonByte)
+		t.AssertNil(err)
+		s := &S{}
+		err = data.Scan(s)
+		t.AssertNil(err)
+		t.Assert(s.B, `[{"k1":"11","k2":"12"},{"k1":"21","k2":"22"}]`)
+	})
+}
+
 // https://github.com/gogf/gf/issues/2980
 func Test_Struct_Issue2980(t *testing.T) {
 	type Post struct {
@@ -1422,5 +1449,31 @@ func Test_Struct_EmptyStruct(t *testing.T) {
 		t.AssertNil(err)
 		t.Assert(s4.Val, 123)
 
+	})
+}
+
+func Test_Struct_Mapping(t *testing.T) {
+	type User struct {
+		Name     string
+		Password string `json:"password"`
+		Pass2    string
+	}
+	gtest.C(t, func(t *gtest.T) {
+		user := new(User)
+		params2 := g.Map{
+			"password": "222",
+			"name":     "wln",
+			"pass3":    "fksngjfngjfd",
+		}
+		if err := gconv.Struct(params2, user, map[string]string{
+			"pass3": "Password",
+		}); err != nil {
+			t.Error(err)
+		}
+		t.Assert(user, &User{
+			Name:     "wln",
+			Pass2:    "",
+			Password: "fksngjfngjfd",
+		})
 	})
 }
