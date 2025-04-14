@@ -7,16 +7,11 @@
 package genctrl
 
 import (
-	"bytes"
-	"go/ast"
-	"go/parser"
-	"go/printer"
-	"go/token"
-
-	"github.com/gogf/gf/cmd/gf/v2/internal/utility/utils"
 	"github.com/gogf/gf/v2/os/gfile"
 	"github.com/gogf/gf/v2/text/gregex"
 	"github.com/gogf/gf/v2/text/gstr"
+
+	"github.com/gogf/gf/cmd/gf/v2/internal/utility/utils"
 )
 
 func (c CGenCtrl) getApiItemsInSrc(apiModuleFolderPath string) (items []apiItem, err error) {
@@ -44,15 +39,16 @@ func (c CGenCtrl) getApiItemsInSrc(apiModuleFolderPath string) (items []apiItem,
 			if err != nil {
 				return nil, err
 			}
-			for _, methodName := range structsInfo {
+			for _, s := range structsInfo {
 				// remove end "Req"
-				methodName = gstr.TrimRightStr(methodName, "Req", 1)
+				methodName := gstr.TrimRightStr(s.structName, "Req", 1)
 				item := apiItem{
 					Import:     gstr.Trim(importPath, `"`),
 					FileName:   gfile.Name(apiFileFolderPath),
 					Module:     gfile.Basename(apiModuleFolderPath),
 					Version:    gfile.Basename(apiVersionFolderPath),
 					MethodName: methodName,
+					Comment:    s.comment,
 				}
 				items = append(items, item)
 			}
@@ -137,65 +133,5 @@ func (c CGenCtrl) getApiItemsInDst(dstFolder string) (items []apiItem, err error
 			items = append(items, item)
 		}
 	}
-	return
-}
-
-// getStructsNameInSrc retrieves all struct names
-// that end in "Req" and have "g.Meta" in their body.
-func (c CGenCtrl) getStructsNameInSrc(filePath string) (structsName []string, err error) {
-	var (
-		fileContent = gfile.GetContents(filePath)
-		fileSet     = token.NewFileSet()
-	)
-
-	node, err := parser.ParseFile(fileSet, "", fileContent, parser.ParseComments)
-	if err != nil {
-		return
-	}
-
-	ast.Inspect(node, func(n ast.Node) bool {
-		if typeSpec, ok := n.(*ast.TypeSpec); ok {
-			methodName := typeSpec.Name.Name
-			if !gstr.HasSuffix(methodName, "Req") {
-				// ignore struct name that do not end in "Req"
-				return true
-			}
-			if structType, ok := typeSpec.Type.(*ast.StructType); ok {
-				var buf bytes.Buffer
-				if err := printer.Fprint(&buf, fileSet, structType); err != nil {
-					return false
-				}
-				// ignore struct name that match a request, but has no g.Meta in its body.
-				if !gstr.Contains(buf.String(), `g.Meta`) {
-					return true
-				}
-				structsName = append(structsName, methodName)
-			}
-		}
-		return true
-	})
-
-	return
-}
-
-// getImportsInDst retrieves all import paths in the file.
-func (c CGenCtrl) getImportsInDst(filePath string) (imports []string, err error) {
-	var (
-		fileContent = gfile.GetContents(filePath)
-		fileSet     = token.NewFileSet()
-	)
-
-	node, err := parser.ParseFile(fileSet, "", fileContent, parser.ParseComments)
-	if err != nil {
-		return
-	}
-
-	ast.Inspect(node, func(n ast.Node) bool {
-		if imp, ok := n.(*ast.ImportSpec); ok {
-			imports = append(imports, imp.Path.Value)
-		}
-		return true
-	})
-
 	return
 }

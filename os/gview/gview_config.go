@@ -182,7 +182,7 @@ func (view *View) AddPath(path string) error {
 			isDir = gfile.IsDir(realPath)
 		}
 	}
-	// Path not exist.
+	// Path doesn't exist.
 	if realPath == "" {
 		err := gerror.NewCodef(gcode.CodeInvalidParameter, `View.AddPath failed: path "%s" does not exist`, path)
 		if errorPrint() {
@@ -221,6 +221,11 @@ func (view *View) Assigns(data Params) {
 // if it's called in multiple goroutines in runtime.
 func (view *View) Assign(key string, value interface{}) {
 	view.data[key] = value
+}
+
+// ClearAssigns trunk all global template variables assignments.
+func (view *View) ClearAssigns() {
+	view.data = make(map[string]interface{})
 }
 
 // SetDefaultFile sets default template file for parsing.

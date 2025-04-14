@@ -267,10 +267,6 @@ func newCommandFromMethod(
 		)
 		if value := ctx.Value(CtxKeyArgumentsIndex); value != nil {
 			argIndex = value.(int)
-			// Use the left args to assign to input struct object.
-			if argIndex < len(arguments) {
-				arguments = arguments[argIndex:]
-			}
 		}
 		if data == nil {
 			data = map[string]interface{}{}
@@ -381,6 +377,9 @@ func newArgumentsFromInput(object interface{}) (args []Argument, err error) {
 		}
 		if arg.Brief == "" {
 			arg.Brief = field.TagDescription()
+		}
+		if arg.Default == "" {
+			arg.Default = field.TagDefault()
 		}
 		if v, ok := metaData[gtag.Arg]; ok {
 			arg.IsArg = gconv.Bool(v)
